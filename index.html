@@ -218,6 +218,58 @@
     }
 
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* PORTS */
+    .card + .card { margin-top: 1.25rem; }
+
+    .ports-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .port-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #f8f9fb;
+      border: 1px solid #dde3eb;
+      border-radius: 4px;
+      padding: 0.65rem 0.9rem;
+    }
+
+    .port-info { display: flex; flex-direction: column; gap: 0.1rem; }
+    .port-name { font-size: 0.8rem; font-weight: 700; color: #0f1e35; text-transform: uppercase; letter-spacing: 0.05em; }
+    .port-num  { font-size: 0.75rem; color: #8a9bb0; font-weight: 600; }
+
+    .port-badge {
+      font-size: 0.7rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      padding: 0.25rem 0.6rem;
+      border-radius: 3px;
+      min-width: 70px;
+      text-align: center;
+    }
+
+    .port-badge.pending  { background: #f0f2f5; color: #8a9bb0; border: 1px solid #dde3eb; }
+    .port-badge.checking { background: #fff8e1; color: #b45309; border: 1px solid #fcd34d; }
+    .port-badge.open     { background: #f0faf4; color: #15803d; border: 1px solid #86efac; }
+    .port-badge.closed   { background: #fff5f5; color: #c20018; border: 1px solid #fca5a5; }
+    .port-badge.error    { background: #f8f9fb; color: #8a9bb0; border: 1px solid #dde3eb; }
+
+    .agent-notice {
+      margin-top: 1rem;
+      padding: 0.65rem 0.9rem;
+      background: #fff8e1;
+      border-left: 3px solid #f59e0b;
+      border-radius: 4px;
+      font-size: 0.78rem;
+      color: #92400e;
+      font-weight: 600;
+      display: none;
+    }
   </style>
 </head>
 <body>
@@ -229,6 +281,7 @@
   </nav>
 
   <main>
+    <div style="width:100%;max-width:440px;padding:0">
     <div class="card">
       <div class="card-header">
         <h1>Panel Operativo</h1>
@@ -254,6 +307,54 @@
         <div class="result" id="result"></div>
 
       </div>
+    </div>
+
+    <!-- CARD PUERTOS -->
+    <div class="card" style="margin-top:1.25rem">
+      <div class="card-header">
+        <h1>Diagnóstico de Red</h1>
+        <h2>Estado de <span>Puertos</span></h2>
+      </div>
+      <div class="card-body">
+        <label style="margin-bottom:0.75rem">Host destino</label>
+        <input id="portHost" type="text" placeholder="ej: miservidor.dyndns.org o 192.168.1.1"
+          style="width:100%;padding:0.65rem 0.9rem;border:1px solid #dde3eb;border-radius:4px;font-family:inherit;font-size:0.9rem;color:#0f1e35;margin-bottom:1.25rem;outline:none"
+          onfocus="this.style.borderColor='#e8001c'" onblur="this.style.borderColor='#dde3eb'"
+        />
+
+        <div class="ports-grid" id="portsGrid">
+          <div class="port-row" data-port="1433" data-label="Base de datos" data-range="false">
+            <div class="port-info">
+              <span class="port-name">Base de datos</span>
+              <span class="port-num">TCP 1433</span>
+            </div>
+            <span class="port-badge pending" id="badge-1433">—</span>
+          </div>
+          <div class="port-row" data-port="3500" data-portend="3502" data-label="Cámaras" data-range="true">
+            <div class="port-info">
+              <span class="port-name">Cámaras</span>
+              <span class="port-num">TCP 3500 – 3502</span>
+            </div>
+            <span class="port-badge pending" id="badge-3500">—</span>
+          </div>
+          <div class="port-row" data-port="3389" data-label="Escritorio remoto" data-range="false">
+            <div class="port-info">
+              <span class="port-name">Escritorio remoto</span>
+              <span class="port-num">TCP 3389</span>
+            </div>
+            <span class="port-badge pending" id="badge-3389">—</span>
+          </div>
+        </div>
+
+        <button style="margin-top:1rem" onclick="checkPorts()">Verificar Puertos</button>
+
+        <div class="agent-notice" id="agentNotice">
+          ⚠️ No se detectó el agente local. Abrí <strong>Iniciar Port Checker.command</strong> desde la carpeta port-checker y volvé a intentar.
+        </div>
+
+      </div>
+    </div>
+
     </div>
   </main>
 
@@ -317,6 +418,68 @@
     }
 
     detectIP();
+
+    const AGENT = "http://localhost:9876";
+
+    async function checkPorts() {
+      const host = document.getElementById("portHost").value.trim();
+      if (!host) {
+        document.getElementById("portHost").focus();
+        return;
+      }
+
+      // Verificar que el agente local esté corriendo
+      try {
+        await fetch(`${AGENT}/check?host=localhost&port=9876`, { signal: AbortSignal.timeout(1500) });
+      } catch {
+        document.getElementById("agentNotice").style.display = "block";
+        return;
+      }
+      document.getElementById("agentNotice").style.display = "none";
+
+      const rows = document.querySelectorAll("#portsGrid .port-row");
+      for (const row of rows) {
+        const port     = parseInt(row.dataset.port);
+        const portEnd  = row.dataset.portend ? parseInt(row.dataset.portend) : port;
+        const isRange  = row.dataset.range === "true";
+        const badgeId  = `badge-${port}`;
+        const badge    = document.getElementById(badgeId);
+
+        badge.className = "port-badge checking";
+        badge.textContent = "...";
+
+        if (!isRange) {
+          const open = await testPort(host, port);
+          setBadge(badge, open);
+        } else {
+          // Rango: abierto si AL MENOS uno está abierto
+          let anyOpen = false;
+          for (let p = port; p <= portEnd; p++) {
+            const open = await testPort(host, p);
+            if (open) { anyOpen = true; break; }
+          }
+          setBadge(badge, anyOpen);
+        }
+      }
+    }
+
+    async function testPort(host, port) {
+      try {
+        const res = await fetch(`${AGENT}/check?host=${encodeURIComponent(host)}&port=${port}`, {
+          signal: AbortSignal.timeout(5000)
+        });
+        const data = await res.json();
+        return data.open === true;
+      } catch {
+        return null; // agente no responde
+      }
+    }
+
+    function setBadge(badge, open) {
+      if (open === true)  { badge.className = "port-badge open";   badge.textContent = "Abierto"; }
+      if (open === false) { badge.className = "port-badge closed";  badge.textContent = "Cerrado"; }
+      if (open === null)  { badge.className = "port-badge error";   badge.textContent = "Error"; }
+    }
   </script>
 </body>
 </html>
